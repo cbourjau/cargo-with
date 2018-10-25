@@ -1,7 +1,7 @@
 cargo-with
 ==========
 `cargo-with` is a cargo-subcommand making it easy to run the build artifacts produced by `cargo run` or `cargo build`
-through other tools such as `gdb` or `rr`.
+through other tools such as `gdb`, `strace`, `valgrind`, `rr`, or whatever else you may come up with.
 
 Installation
 -----------

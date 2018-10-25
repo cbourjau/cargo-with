@@ -12,9 +12,8 @@ cargo install cargo-with
 Usage
 -----
 The core idea of `cargo-with` is to fit well into your development workflow using `cargo run` and `cargo test`.
-All you have to do is add `with <some_binary> -- `` in front of your usual `cargo` commands.
-For example, to invoke `gdb` for your tests do:
-
+All you have to do is add `with <some_binary> -- ` in front of your usual `cargo` commands.
+For example, in order to run your tests through `gdb` do:
 ```shell
 cargo with gdb -- test
 ```

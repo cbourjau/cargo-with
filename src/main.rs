@@ -15,10 +15,9 @@ use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
 
 // const CARGO_TOML: &'static str = "Cargo.toml";
-const COMMAND_NAME: &'static str = "with";
-const COMMAND_DESCRIPTION: &'static str =
+const COMMAND_NAME: &str = "with";
+const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
-
 
 #[derive(Deserialize, Debug)]
 struct BuildOpt {
@@ -64,11 +63,13 @@ impl<'a> CargoCmd<'a> {
             ))?;
         }
         let mut iter = args.split(|s| s == "--");
-        let cmd = iter.next().ok_or(err_msg("Invalid cargo command"))?;
-        let downstream_args: Vec<_> = iter.flatten().map(|s| s.clone()).collect();
+        let cmd = iter
+            .next()
+            .ok_or_else(|| err_msg("Invalid cargo command"))?;
+        let downstream_args: Vec<_> = iter.flatten().cloned().collect();
         Ok(CargoCmd {
-            cmd: cmd,
-            downstream_args: downstream_args,
+            cmd,
+            downstream_args,
         })
     }
 
@@ -85,7 +86,7 @@ impl<'a> CargoCmd<'a> {
         debug!(
             "Executing `cargo {:?}`",
             args.clone()
-                .map(|s| s.clone())
+                .cloned()
                 .collect::<Vec<_>>()
                 .as_slice()
                 .join(" ")
@@ -105,8 +106,8 @@ impl<'a> CargoCmd<'a> {
         artifacts
             .last()
             .and_then(|best_guess| best_guess.filenames.get(0))
-            .map(|path| path.clone())
-            .ok_or(err_msg("Failed to guess binary file name"))
+            .cloned()
+            .ok_or_else(|| err_msg("Failed to guess binary file name"))
     }
 }
 
@@ -115,9 +116,8 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
     let matches = matches.subcommand_matches(COMMAND_NAME).unwrap();
     let cargo_cmd = matches
         .values_of("cargo-cmd")
-        .ok_or(err_msg(
-            "Failed to parse the cargo command producing the artifact",
-        ))?.map(String::from)
+        .ok_or_else(|| err_msg("Failed to parse the cargo command producing the artifact"))?
+        .map(String::from)
         .collect::<Vec<_>>();
     let cargo_cmd = CargoCmd::new(&cargo_cmd)?;
     // This is the best guess for the artifact...
@@ -129,7 +129,7 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
         .value_of("with-cmd")
         .unwrap()
         .trim()
-        .split(" ")
+        .split(' ')
         .collect();
 
     // add {bin} and {args} if not present
@@ -151,7 +151,7 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
             } else {
                 vec![el.to_string()]
             }
-        }).map(|s| s.clone())
+        }).map(|s| s.to_string())
         .collect::<Vec<_>>();
 
     debug!(
@@ -197,7 +197,6 @@ fn main() -> Result<(), Error> {
     process_matches(&matches)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,18 +210,18 @@ mod tests {
     }
 
     #[test]
-    fn test2() {
+    fn parse_args() {
         "cargo with \"rr record {}\" -- run --release";
         let app = create_app();
-        let matches = app.get_matches_from(vec![
-            "cargo-with",
-            "gdb {bin} {args}",
+        let _matches = app.get_matches_from(vec![
+            "cargo",
+            "with",
+            "gdb --args {bin} {args}",
             "--",
             "test",
             "--release",
             "--",
             "test2",
         ]);
-        process_matches(&matches).unwrap();
     }
 }

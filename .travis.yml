@@ -10,4 +10,4 @@ rust:
 script:
   - cargo build --verbose --all --release
   - cargo test --verbose --all --release
-  - cargo install --path=.
+  - cargo install --path=. --force

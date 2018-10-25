@@ -1,5 +1,7 @@
-#[macro_use] extern crate log;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate serde_derive;
 extern crate clap;
 extern crate env_logger;
 extern crate failure;
@@ -10,7 +12,13 @@ use std::process::Command;
 use std::str;
 
 use clap::{App, AppSettings, Arg, SubCommand};
-use failure::{Error, err_msg};
+use failure::{err_msg, Error};
+
+// const CARGO_TOML: &'static str = "Cargo.toml";
+const COMMAND_NAME: &'static str = "with";
+const COMMAND_DESCRIPTION: &'static str =
+    "A third-party cargo extension to run the build artifacts through tools like `gdb`";
+
 
 #[derive(Deserialize, Debug)]
 struct BuildOpt {
@@ -20,7 +28,7 @@ struct BuildOpt {
     package_id: String,
     profile: Profile,
     reason: String,
-    target: Target
+    target: Target,
 }
 
 #[derive(Deserialize, Debug)]
@@ -41,31 +49,19 @@ struct Target {
     src_path: std::path::PathBuf,
 }
 
-
-// const CARGO_TOML: &'static str = "Cargo.toml";
-const COMMAND_NAME: &'static str = "with";
-const COMMAND_DESCRIPTION: &'static str = "A third-party cargo extension to run the build artifacts through tools like `gdb`";
-
-fn main() -> Result<(), Error> {
-    env_logger::init();
-
-    let app = create_app();
-    let matches = app.get_matches();
-    debug!("CLI matches: {:#?}", matches);
-    process_matches(&matches)
-}
-
 #[derive(Debug)]
 struct CargoCmd<'a> {
-    cmd: &'a[String],
+    cmd: &'a [String],
     downstream_args: Vec<String>,
 }
 
 impl<'a> CargoCmd<'a> {
-    fn new(args: &'a[String]) -> Result<Self, Error> {
+    fn new(args: &'a [String]) -> Result<Self, Error> {
         debug!("Cargo subcommand: {}", args.join(" "));
         if !args.starts_with(&["run".to_string()]) && !args.starts_with(&["test".to_string()]) {
-            Err(err_msg("Only the 'run' and 'test' cargo commands are supported"))?;
+            Err(err_msg(
+                "Only the 'run' and 'test' cargo commands are supported",
+            ))?;
         }
         let mut iter = args.split(|s| s == "--");
         let cmd = iter.next().ok_or(err_msg("Invalid cargo command"))?;
@@ -78,12 +74,22 @@ impl<'a> CargoCmd<'a> {
 
     /// Builds the new artifact. Replaces the cargo-command 'run' by 'build', in order to avoid the execution.
     fn create_artifact(&self) -> Result<std::path::PathBuf, Error> {
-        let cargo_sub = if self.cmd[0] == "run" {"build"} else {self.cmd[0].as_str()};
+        let cargo_sub = if self.cmd[0] == "run" {
+            "build"
+        } else {
+            self.cmd[0].as_str()
+        };
         let args = [cargo_sub.to_string(), "--message-format=json".to_string()];
-        let args = args.into_iter()
-            .chain(self.cmd[1..].iter());
+        let args = args.into_iter().chain(self.cmd[1..].iter());
 
-        debug!("Executing `cargo {:?}`", args.clone().map(|s| s.clone()).collect::<Vec<_>>().as_slice().join(" "));
+        debug!(
+            "Executing `cargo {:?}`",
+            args.clone()
+                .map(|s| s.clone())
+                .collect::<Vec<_>>()
+                .as_slice()
+                .join(" ")
+        );
         let build_out = Command::new("cargo")
             .args(args)
             .output()
@@ -91,12 +97,13 @@ impl<'a> CargoCmd<'a> {
         if !build_out.status.success() {
             return Err(err_msg("Failed to run cargo command. Try running the original cargo command (without cargo-with)"));
         }
-        let artifacts =  str::from_utf8(&build_out.stdout).unwrap().lines()
+        let artifacts = str::from_utf8(&build_out.stdout).unwrap().lines()
                  // FIXME: There are plenty of errors here! This should really be better handled!
                  .flat_map(serde_json::from_str::<BuildOpt>)
                  .collect::<Vec<_>>();
         // We take the last artifact, but this is really just a guess hoping for the best!
-        artifacts.last()
+        artifacts
+            .last()
             .and_then(|best_guess| best_guess.filenames.get(0))
             .map(|path| path.clone())
             .ok_or(err_msg("Failed to guess binary file name"))
@@ -108,8 +115,9 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
     let matches = matches.subcommand_matches(COMMAND_NAME).unwrap();
     let cargo_cmd = matches
         .values_of("cargo-cmd")
-        .ok_or(err_msg("Failed to parse the cargo command producing the artifact"))?
-        .map(String::from)
+        .ok_or(err_msg(
+            "Failed to parse the cargo command producing the artifact",
+        ))?.map(String::from)
         .collect::<Vec<_>>();
     let cargo_cmd = CargoCmd::new(&cargo_cmd)?;
     // This is the best guess for the artifact...
@@ -117,7 +125,9 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
     let artifact = artifact.to_str().unwrap();
 
     // The string describing how to envoke the child process
-    let mut with_cmd: Vec<_> = matches.value_of("with-cmd").unwrap()
+    let mut with_cmd: Vec<_> = matches
+        .value_of("with-cmd")
+        .unwrap()
         .trim()
         .split(" ")
         .collect();
@@ -130,15 +140,24 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
         with_cmd.push("{args}");
     }
 
-    let with_cmd = with_cmd.iter()
-        .map(|&el| if el == "{bin}" {artifact} else {el});
+    let with_cmd = with_cmd
+        .iter()
+        .map(|&el| if el == "{bin}" { artifact } else { el });
     let args = cargo_cmd.downstream_args;
     let with_cmd = with_cmd
-        .flat_map(|el| if el == "{args}" {args.to_owned()} else {vec![el.to_string()]})
-        .map(|s| s.clone())
+        .flat_map(|el| {
+            if el == "{args}" {
+                args.to_owned()
+            } else {
+                vec![el.to_string()]
+            }
+        }).map(|s| s.clone())
         .collect::<Vec<_>>();
 
-    debug!("Executing `{:?}`", Command::new(with_cmd[0].to_owned()).args(with_cmd[1..].iter()));
+    debug!(
+        "Executing `{:?}`",
+        Command::new(with_cmd[0].to_owned()).args(with_cmd[1..].iter())
+    );
     Command::new(with_cmd[0].to_owned())
         .args(with_cmd[1..].iter())
         .spawn()
@@ -148,8 +167,11 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
 }
 
 fn create_app<'a, 'b>() -> App<'a, 'b> {
-
-    
+    let usage =
+        concat!(
+            "<with-cmd> 'Command executed with the cargo-created binary. Use {bin} to denote the binary",
+            "and {args} to denote the arguments passed through cargo following \'--\'; if omitted the",
+            "{bin} and {args} is added as the last arguments'");
     App::new(COMMAND_NAME)
         .about(COMMAND_DESCRIPTION)
         // We have to lie about our binary name since this will be a third party
@@ -159,19 +181,27 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
         // which will be interpreted as a subcommand/positional arg by clap
         .subcommand(SubCommand::with_name(COMMAND_NAME)
                     .about(COMMAND_DESCRIPTION)
-                    .arg(
-                        Arg::from_usage(
-                            "<with-cmd> 'Command executed with the cargo-created binary. Use {bin} to denote the binary and {args} to denote the arguments passed through cargo following \'--\'; if omitted the {bin} and {args} is added as the last arguments'"))
+                    .arg(Arg::from_usage(&usage))
                     .arg(clap::Arg::from_usage("<cargo-cmd> 'The cargo commands `test` or `run`'")
                          .raw(true))
         )
         .settings(&[AppSettings::SubcommandRequired])
 }
 
+fn main() -> Result<(), Error> {
+    env_logger::init();
+
+    let app = create_app();
+    let matches = app.get_matches();
+    debug!("CLI matches: {:#?}", matches);
+    process_matches(&matches)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_build_ops() {
         let json = "
@@ -179,12 +209,20 @@ mod tests {
 }";
         let _opts: BuildOpt = serde_json::from_str(json).unwrap();
     }
-    
+
     #[test]
     fn test2() {
         "cargo with \"rr record {}\" -- run --release";
         let app = create_app();
-        let matches = app.get_matches_from(vec!["cargo-with", "gdb {bin} {args}", "--", "test", "--release", "--", "test2"]);
+        let matches = app.get_matches_from(vec![
+            "cargo-with",
+            "gdb {bin} {args}",
+            "--",
+            "test",
+            "--release",
+            "--",
+            "test2",
+        ]);
         process_matches(&matches).unwrap();
     }
 }

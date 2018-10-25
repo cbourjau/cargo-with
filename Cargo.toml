@@ -2,6 +2,24 @@
 name = "cargo-with"
 version = "0.1.0"
 authors = ["cbourjau <christian.bourjau@cern.ch>"]
+categories = [
+    "development-tools",
+    "development-tools::cargo-plugins",
+]
+description = "A third-party cargo extension to run the build artifacts through tools like `gdb`."
+documentation = "https://github.com/cbourjau/cargo-with/blob/master/README.md"
+homepage = "https://github.com/cbourjau/cargo-with/"
+keywords = [
+    "cargo",
+    "cargo-subcommand",
+    "cli",
+    "dependencies",
+    "crates",
+]
+license = "GPL-3.0"
+readme = "README.md"
+repository = "https://github.com/cbourjau/cargo-with"
+
 
 [dependencies]
 serde = "1.0.80"

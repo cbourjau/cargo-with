@@ -169,8 +169,8 @@ fn process_matches(matches: &clap::ArgMatches) -> Result<(), Error> {
 fn create_app<'a, 'b>() -> App<'a, 'b> {
     let usage =
         concat!(
-            "<with-cmd> 'Command executed with the cargo-created binary. Use {bin} to denote the binary",
-            "and {args} to denote the arguments passed through cargo following \'--\'; if omitted the",
+            "<with-cmd> 'Command executed with the cargo-created binary. Use {bin} to denote the binary ",
+            "and {args} to denote the arguments passed through cargo following \'--\'; if omitted the ",
             "{bin} and {args} is added as the last arguments'");
     App::new(COMMAND_NAME)
         .about(COMMAND_DESCRIPTION)

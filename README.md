@@ -3,6 +3,10 @@ cargo-with
 `cargo-with` is a cargo-subcommand making it easy to run the build artifacts produced by `cargo run` or `cargo build`
 through other tools such as `gdb`, `strace`, `valgrind`, `rr`, or whatever else you may come up with.
 
+[![Build Status](https://travis-ci.org/cbourjau/cargo-with.svg)](https://travis-ci.org/cbourjau/cargo-with)
+[![crates.io](https://img.shields.io/crates/v/cargo-with.svg)](https://crates.io/crates/cargo-with)
+
+
 Installation
 -----------
 Install with the usual `cargo install` magic:

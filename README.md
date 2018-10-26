@@ -28,7 +28,7 @@ More complicated calling signatures can be accommodated by using `{bin}` and `{a
 ```shell
 cargo with "gdb --args {bin} {args}" -- tests -- the_name_of_my_test
 ```
-
+`{bin}` is replaced by the path to the produced build artifact while `{args}` is replaced by the arguments given after the last ` -- `.
 If `{bin}` or `{args}` are not provided they are automatically appended to the end of the command.
 
 Note about `cargo run`

@@ -4,6 +4,7 @@ extern crate log;
 extern crate serde_derive;
 extern crate clap;
 extern crate env_logger;
+#[macro_use]
 extern crate failure;
 extern crate serde;
 extern crate serde_json;
@@ -84,7 +85,8 @@ impl<'a, 'b: 'a> CargoCmd<'a, 'b> {
         } else {
             self.cmd[0]
         };
-        let args = [cargo_sub, "--message-format=json"];
+        // also parse `--quite` to avoid mangled non-json output
+        let args = [cargo_sub, "--message-format=json", "--quiet"];
         let args = args.into_iter().chain(self.cmd[1..].iter()).map(|s| *s);
 
         debug!(
@@ -104,14 +106,31 @@ impl<'a, 'b: 'a> CargoCmd<'a, 'b> {
             .unwrap()
             .lines()
             // FIXME: There are plenty of errors here! This should really be better handled!
-            .flat_map(serde_json::from_str::<BuildOpt>)
+            .flat_map(|l| serde_json::from_str::<BuildOpt>(l)
+                      .map_err(|e| {
+                          debug!("Error: {} \n Json: {:#?}", e, l);
+                          e
+                      }))
             .collect::<Vec<_>>();
         // We take the last artifact, but this is really just a guess hoping for the best!
-        artifacts
-            .last()
-            .and_then(|best_guess| best_guess.filenames.get(0))
-            .cloned()
-            .ok_or_else(|| err_msg("Failed to guess binary file name"))
+        let exec_candidates: Vec<_> =
+            artifacts
+            .iter()
+            .filter_map(|art| art.filenames.get(0))
+            .filter_map(|path| {
+                match path.extension() {
+                    // The extension of the final executable (None on Linux)
+                    Some(std::ffi::OsStr::new("exe")) | None => Some(path),
+                    // Intermediate artifacts have extension `rlib` on linux, but this is probably platform dependent!
+                    Some(_) => None,
+                }})
+            .collect();
+        // There should only be only one final candidate
+        if exec_candidates.len() == 1 {
+            exec_candidates[0]
+        } else {
+            format_err!("Could not determine executable candidate!")
+        }
     }
 }
 
@@ -228,5 +247,22 @@ mod tests {
             "--",
             "test2",
         ]);
+    }
+
+    #[test]
+    fn parse_cargo_output_lib() {
+        use std::str;
+        let output = str::from_utf8(include_bytes!("./tests/cargo_output_lib")).unwrap();
+        output.lines()
+            .for_each(|l| {
+                match serde_json::from_str::<BuildOpt>(l) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        if !l.contains("\"reason\":\"build-script-executed\"") {
+                            panic!("{} /n Failed to parse json for unexpected reason: {:#?}", e, l)
+                        }
+                    },
+                };
+            });
     }
 }

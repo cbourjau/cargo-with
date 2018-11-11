@@ -90,7 +90,7 @@ impl<'a> Cmd<'a> {
 
         if !build_out.status.success() {
             Err(format_err!(
-                "{}\n{}\n\nCargo subcommand failed. Try running the original cargo command (without cargo-with)",
+                "{}\n{}\nCargo subcommand failed. Try running the original cargo command (without cargo-with)",
                 str::from_utf8(&build_out.stderr).unwrap(),
                 str::from_utf8(&build_out.stdout).unwrap()
             ))?;

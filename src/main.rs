@@ -12,7 +12,7 @@ const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
 
-fn main() -> Result<(), Error> {
+fn runner() -> Result<(), Error> {
     env_logger::init();
 
     let app = create_app();
@@ -25,9 +25,23 @@ fn main() -> Result<(), Error> {
     cargo_with::run(cargo_cmd_iter, cmd_iter)
 }
 
+// Make a separate runner to print errors using Display instead of Debug
+fn main() {
+    if let Err(e) = runner() {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
+}
+
 fn process_matches<'a>(
     matches: &'a clap::ArgMatches,
-) -> Result<(impl Iterator<Item = &'a str>, impl Iterator<Item = &'a str>), Error> {
+) -> Result<
+    (
+        impl Iterator<Item = &'a str> + Clone,
+        impl Iterator<Item = &'a str> + Clone,
+    ),
+    Error,
+> {
     // The original cargo command
     let matches = matches
         .subcommand_matches(COMMAND_NAME)

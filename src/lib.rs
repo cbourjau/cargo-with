@@ -6,46 +6,88 @@ extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
+use std::cell::Cell;
+use std::iter::once;
 use std::process::Command;
 
 use failure::{err_msg, format_err, Error};
 
 mod cargo;
-use cargo::BuildOpt;
+use cargo::{BuildOpt, TargetKind};
 
 const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json", "--quiet"];
 
-pub fn run<'a, 'b>(
-    cargo_cmd_iter: impl Iterator<Item = &'a str>,
-    mut cmd_iter: impl Iterator<Item = &'b str>,
+/// `cargo_cmd_iter` is an iterator over the cargo subcommand with arguments
+/// `cmd_iter` is an iterator over the the command to run the binary with
+pub fn run<'a>(
+    mut cargo_cmd_iter: impl Iterator<Item = &'a str> + Clone,
+    mut cmd_iter: impl Iterator<Item = &'a str> + Clone,
 ) -> Result<(), Error> {
-    let cargo_cmd = cargo::Cmd::from_strs(cargo_cmd_iter)?;
+    // The cargo subcommand including arguments
+    let subcmd_str: Vec<_> = cargo_cmd_iter
+        .by_ref()
+        .take_while(|el| *el != "--")
+        .collect();
+
+    // The remaining elements are the arguments to the binary ({args})
+    let args_after_cargo_cmd = cargo_cmd_iter;
+
+    // Make and run the cargo subcommand
+    let cargo_cmd = cargo::Cmd::from_strs(subcmd_str)?;
     let buildopts = cargo_cmd.run()?;
 
     // Select the wanted buildopt
-    let buildopt = select_buildopt(buildopts.iter(), cargo_cmd.kind())?;
-    let artifact_path = buildopt.filenames[0].to_str().ok_or(format_err!(""))?;
+    let buildopt = select_buildopt(&buildopts, cargo_cmd.kind())?;
+    let artifact_path = buildopt.filenames[0].to_str().ok_or(err_msg(
+        "Filename of artifact contains non-valid UTF-8 characters",
+    ))?;
 
-    // Separate the command from the arguments
+    // The name of the binary to run on the artifact
     let cmd = cmd_iter.next().ok_or(err_msg("Empty with command"))?;
-    let mut args: Vec<_> = cmd_iter.collect();
 
-    // Try to replace {bin} in the arguments with the artifact path
-    let replaced_bin = args
-        .iter_mut()
-        .find(|el| *el == &mut "{bin}")
-        .map(|el| *el = artifact_path)
-        .is_some();
+    // The remaining elements are the arguments to the binary
+    let args = cmd_iter;
 
-    // If we did not find {bin} in the args, add the artifact path as the last argument
-    if !replaced_bin {
-        args.push(artifact_path);
+    // Variables to check if we found the bin and args in the command
+    // arguments. This prevents the need to search through the string to check
+    // if {bin}/{args} exists
+    let found_bin = Cell::new(false);
+    let found_args = Cell::new(false);
+
+    let mut expanded_args: Vec<_> = args
+        // We have to use a box because impl Trait is not supported in closures
+        .flat_map(|el| -> Box<Iterator<Item = &str>> {
+            match el {
+                "{bin}" => {
+                    found_bin.set(true);
+                    Box::new(once(artifact_path))
+                }
+                "{args}" => {
+                    found_args.set(true);
+                    Box::new(args_after_cargo_cmd.clone())
+                }
+                _ => Box::new(once(el)),
+            }
+        })
+        .collect();
+
+    // If we did not find {bin}/{args} we append the bin and args to the end of
+    // the arguments
+    if !found_bin.get() {
+        expanded_args.push(artifact_path);
+    }
+    if !found_args.get() {
+        // Using `expanded_args.extend(cargo_cmd_iter)` gives a lifetime error, hence we
+        // rather push one element at a time
+        for arg in args_after_cargo_cmd {
+            expanded_args.push(arg);
+        }
     }
 
-    debug!("Executing `{} {}`", cmd, args.join(" "));
+    debug!("Executing `{} {}`", cmd, expanded_args.join(" "));
 
     Command::new(cmd)
-        .args(args)
+        .args(expanded_args)
         .spawn()
         .expect("Failed to spawn child process")
         .wait()?;
@@ -57,10 +99,51 @@ pub fn run<'a, 'b>(
 ///
 /// If there are multiple possible candidates, this will return an error
 fn select_buildopt<'a>(
-    opts: impl Iterator<Item = &'a BuildOpt>,
-    _cmd_kind: cargo::CmdKind,
+    opts: impl IntoIterator<Item = &'a BuildOpt>,
+    cmd_kind: cargo::CmdKind,
 ) -> Result<&'a BuildOpt, Error> {
-    opts.last().ok_or(err_msg("Did not find any buildopts"))
+    let opts = opts.into_iter();
+
+    // Target kinds we want to look for
+    let look_for = &[TargetKind::Bin, TargetKind::Example, TargetKind::Test];
+    let is_test = cmd_kind == cargo::CmdKind::Test;
+
+    // Find candidates with the possible target types
+    let mut candidates = opts
+        .filter(|opt| {
+            // When run as a test we only care about the binary where the profile
+            // is set as `test`
+            if is_test {
+                opt.profile.test
+            } else {
+                opt.target
+                    .kind
+                    .iter()
+                    .any(|kind| look_for.iter().any(|lkind| lkind == kind))
+            }
+        })
+        .peekable();
+
+    // Get the first candidate
+    let first = candidates
+        .next()
+        .ok_or(err_msg("Found no possible candidates"))?;
+
+    // We found more than one candidate
+    if candidates.peek().is_some() {
+        // Make a error string including all the possible candidates
+        let candidates_str = candidates
+            .map(|opt| format!("\t- {} ({})", opt.target.name, opt.target.kind[0]))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if is_test {
+            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--test`, `--example`, `--bin` or `--lib` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+        } else {
+            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--example` or `--bin` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+        }
+    }
+    Ok(first)
 }
 
 #[cfg(test)]

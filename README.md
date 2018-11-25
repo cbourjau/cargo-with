@@ -29,7 +29,7 @@ This will firstly build the binary using `cargo build`, and then run `gdb {bin} 
 
 ### Moving arguments around
 
-Instead of implicitly appending the artifact path and arguments to the provided command, you could also use placeholders to tell `cargo-with` where to place them. This is done via `{bin}` and `{args}`.
+Instead of implicitly appending the artifact path and arguments to the provided command, you could also use placeholders to tell `cargo-with` where to place them. This can be done by using `{bin}` and `{args}` in the provided command.
 
 ```
 cargo with "echo {args} {bin}" -- run -- --argument1 --argument2

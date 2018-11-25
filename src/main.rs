@@ -1,18 +1,27 @@
-#[macro_use]
-extern crate log;
-extern crate cargo_with;
 extern crate clap;
 extern crate env_logger;
 extern crate failure;
+#[macro_use]
+extern crate log;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
+
 
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
+
+mod runner;
+mod cargo;
+use runner::runner;
 
 const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
 
-fn runner() -> Result<(), Error> {
+// Make a separate runner to print errors using Display instead of Debug
+fn main() -> Result<(), Error>{
     env_logger::init();
 
     let app = create_app();
@@ -21,16 +30,7 @@ fn runner() -> Result<(), Error> {
     debug!("CLI matches: {:#?}", matches);
 
     let (cargo_cmd_iter, cmd_iter) = process_matches(&matches)?;
-
-    cargo_with::run(cargo_cmd_iter, cmd_iter)
-}
-
-// Make a separate runner to print errors using Display instead of Debug
-fn main() {
-    if let Err(e) = runner() {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
-    }
+    return runner(cargo_cmd_iter, cmd_iter);
 }
 
 fn process_matches<'a>(
@@ -56,8 +56,7 @@ fn process_matches<'a>(
         .value_of("with-cmd")
         .ok_or(err_msg(
             "Failed to parse the command to run with the artifact",
-        ))?
-        .trim()
+        ))?.trim()
         .split(' ');
 
     Ok((cargo_cmd_iter, cmd_iter))
@@ -83,9 +82,10 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
                 .arg(
                     clap::Arg::from_usage("<cargo-cmd> 'The cargo subcommand `test` or `run`'")
                         .raw(true),
-                ),
-        )
-        .settings(&[AppSettings::SubcommandRequired])
+                ).arg(clap::Arg::from_usage(
+                    "--print-only 'Print only the final command without running it'",
+                )),
+        ).settings(&[AppSettings::SubcommandRequired])
 }
 
 #[cfg(test)]

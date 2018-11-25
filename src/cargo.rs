@@ -2,11 +2,12 @@ use failure::{err_msg, format_err, Error};
 
 use std::process::Command;
 use std::{iter, str};
+use std::path::PathBuf;
 
-use super::DEFAULT_CARGO_ARGS;
+const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json", "--quiet"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CmdKind {
+pub(crate) enum CmdKind {
     Run,
     Test,
 }
@@ -32,14 +33,14 @@ impl CmdKind {
 }
 
 #[derive(Debug)]
-pub struct Cmd<'a> {
+pub(crate) struct Cmd<'a> {
     kind: CmdKind,
     args: Vec<&'a str>,
 }
 
 impl<'a> Cmd<'a> {
     /// Create a command from the given strings
-    pub fn from_strs(strs: impl IntoIterator<Item = &'a str>) -> Result<Self, Error> {
+    pub(crate) fn from_strs(strs: impl IntoIterator<Item = &'a str>) -> Result<Self, Error> {
         let mut strs = strs.into_iter();
 
         let kind = strs
@@ -56,7 +57,7 @@ impl<'a> Cmd<'a> {
             args: strs.collect(),
         })
     }
-    pub fn kind(&self) -> CmdKind {
+    pub(crate) fn kind(&self) -> CmdKind {
         self.kind
     }
     /// Get the arguments which would be passed to `cargo`
@@ -80,7 +81,7 @@ impl<'a> Cmd<'a> {
     }
 
     /// Run the cargo command and get the output back as a vector
-    pub fn run(&self) -> Result<Vec<BuildOpt>, Error> {
+    pub(crate) fn run(&self) -> Result<Vec<BuildOpt>, Error> {
         debug!("Executing `cargo {}`", self.args_str());
 
         let build_out = Command::new("cargo")
@@ -113,23 +114,23 @@ impl<'a> Cmd<'a> {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct BuildOpt {
-    pub features: Vec<String>,
-    pub filenames: Vec<std::path::PathBuf>,
-    pub fresh: bool,
-    pub package_id: String,
-    pub profile: Profile,
-    pub reason: String,
-    pub target: Target,
+pub(crate) struct BuildOpt {
+    features: Vec<String>,
+    filenames: Vec<PathBuf>,
+    fresh: bool,
+    package_id: String,
+    profile: Profile,
+    reason: String,
+    target: Target,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Profile {
-    pub debug_assertions: bool,
-    pub debuginfo: Option<u32>,
-    pub opt_level: String,
-    pub overflow_checks: bool,
-    pub test: bool,
+struct Profile {
+    debug_assertions: bool,
+    debuginfo: Option<u32>,
+    opt_level: String,
+    overflow_checks: bool,
+    test: bool,
 }
 
 /// Most possible targetkinds taken from
@@ -139,7 +140,7 @@ pub struct Profile {
 /// signature).
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum TargetKind {
+enum TargetKind {
     Example,
     Test,
     Bin,
@@ -169,10 +170,68 @@ impl std::fmt::Display for TargetKind {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Target {
-    pub crate_types: Vec<String>,
-    pub edition: String,
-    pub kind: Vec<TargetKind>,
-    pub name: String,
-    pub src_path: std::path::PathBuf,
+struct Target {
+    crate_types: Vec<String>,
+    edition: String,
+    kind: Vec<TargetKind>,
+    name: String,
+    src_path: std::path::PathBuf,
+}
+
+/// Selects the buildopt which fits with the requirements
+///
+/// If there are multiple possible candidates, this will return an error
+pub(crate) fn select_buildopt<'a>(
+    opts: impl IntoIterator<Item = &'a BuildOpt>,
+    cmd_kind: CmdKind,
+) -> Result<&'a BuildOpt, Error> {
+    let opts = opts.into_iter();
+
+    // Target kinds we want to look for
+    let look_for = &[TargetKind::Bin, TargetKind::Example, TargetKind::Test];
+    let is_test = cmd_kind == CmdKind::Test;
+
+    // Find candidates with the possible target types
+    let mut candidates = opts
+        .filter(|opt| {
+            // When run as a test we only care about the binary where the profile
+            // is set as `test`
+            if is_test {
+                opt.profile.test
+            } else {
+                opt.target
+                    .kind
+                    .iter()
+                    .any(|kind| look_for.iter().any(|lkind| lkind == kind))
+            }
+        })
+        .peekable();
+
+    // Get the first candidate
+    let first = candidates
+        .next()
+        .ok_or(err_msg("Found no possible candidates"))?;
+
+    // We found more than one candidate
+    if candidates.peek().is_some() {
+        // Make a error string including all the possible candidates
+        let candidates_str = candidates
+            .map(|opt| format!("\t- {} ({})", opt.target.name, opt.target.kind[0]))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if is_test {
+            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--test`, `--example`, `--bin` or `--lib` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+        } else {
+            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--example` or `--bin` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+        }
+    }
+    Ok(first)
+}
+
+impl BuildOpt {
+    /// Best guess for the build artifact associated with this `BuildOpt`
+    pub(crate) fn artifact(&self) ->  Result<PathBuf, Error>{
+        Ok(self.filenames[0].clone())
+    }
 }

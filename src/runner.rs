@@ -28,12 +28,12 @@ pub(crate) fn runner<'a>(
     let buildopt = cargo::select_buildopt(&buildopts, cargo_cmd.kind())?;
     let artifact = buildopt.artifact()?;
     let artifact_str = artifact
-        .to_str().ok_or(err_msg(
+        .to_str().ok_or_else(|| err_msg(
             "Filename of artifact contains non-valid UTF-8 characters",
         ))?;
 
     // The name of the binary to run on the artifact
-    let cmd = cmd_iter.next().ok_or(err_msg("Empty with command"))?;
+    let cmd = cmd_iter.next().ok_or_else(|| err_msg("Empty with command"))?;
 
     // The remaining elements are the arguments to the binary
     // Since we will have to search for {bin} and {args} we just
@@ -65,18 +65,4 @@ pub(crate) fn runner<'a>(
         .wait()?;
 
     Ok(())
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_ops() {
-        let json = "
-{\"features\":[],\"filenames\":[\"/home/christian/repos/rust/cargo-dbg/target/debug/cargo_dbg-813f65328e31d537\"],\"fresh\":true,\"package_id\":\"cargo-dbg 0.1.0 (path+file:///home/christian/repos/rust/cargo-dbg)\",\"profile\":{\"debug_assertions\":true,\"debuginfo\":2,\"opt_level\":\"0\",\"overflow_checks\":true,\"test\":true},\"reason\":\"compiler-artifact\",\"target\":{\"crate_types\":[\"bin\"],\"edition\":\"2015\",\"kind\":[\"bin\"],\"name\":\"cargo-dbg\",\"src_path\":\"/home/christian/repos/rust/cargo-dbg/src/main.rs\"}
-}";
-        let _opts: BuildOpt = serde_json::from_str(json).unwrap();
-    }
 }

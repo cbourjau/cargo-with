@@ -30,7 +30,7 @@ fn main() -> Result<(), Error>{
     debug!("CLI matches: {:#?}", matches);
 
     let (cargo_cmd_iter, cmd_iter) = process_matches(&matches)?;
-    return runner(cargo_cmd_iter, cmd_iter);
+    runner(cargo_cmd_iter, cmd_iter)
 }
 
 fn process_matches<'a>(
@@ -45,16 +45,16 @@ fn process_matches<'a>(
     // The original cargo command
     let matches = matches
         .subcommand_matches(COMMAND_NAME)
-        .ok_or(err_msg("Failed to parse the correct subcommand"))?;
+        .ok_or_else(|| err_msg("Failed to parse the correct subcommand"))?;
 
-    let cargo_cmd_iter = matches.values_of("cargo-cmd").ok_or(err_msg(
+    let cargo_cmd_iter = matches.values_of("cargo-cmd").ok_or_else(|| err_msg(
         "Failed to parse the cargo command producing the artifact",
     ))?;
 
     // The string describing how to envoke the child process
     let cmd_iter = matches
         .value_of("with-cmd")
-        .ok_or(err_msg(
+        .ok_or_else(|| err_msg(
             "Failed to parse the command to run with the artifact",
         ))?.trim()
         .split(' ');
@@ -82,9 +82,7 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
                 .arg(
                     clap::Arg::from_usage("<cargo-cmd> 'The cargo subcommand `test` or `run`'")
                         .raw(true),
-                ).arg(clap::Arg::from_usage(
-                    "--print-only 'Print only the final command without running it'",
-                )),
+                ),
         ).settings(&[AppSettings::SubcommandRequired])
 }
 

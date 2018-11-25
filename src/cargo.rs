@@ -25,7 +25,7 @@ impl CmdKind {
     /// Returns the respective command kind as a command to pass to
     /// artifact generation
     fn as_artifact_cmd(&self) -> &'static str {
-        match *self {
+        match self {
             CmdKind::Run => "build",
             CmdKind::Test => "test",
         }
@@ -45,7 +45,7 @@ impl<'a> Cmd<'a> {
 
         let kind = strs
             .next()
-            .ok_or(err_msg("Empty cargo command"))
+            .ok_or_else(|| err_msg("Empty cargo command"))
             .and_then(|kind_str| {
                 CmdKind::from_str(kind_str).ok_or({
                     format_err!("Unable to convert '{}' into a cargo subcommand", kind_str)
@@ -210,7 +210,7 @@ pub(crate) fn select_buildopt<'a>(
     // Get the first candidate
     let first = candidates
         .next()
-        .ok_or(err_msg("Found no possible candidates"))?;
+        .ok_or_else(|| err_msg("Found no possible candidates"))?;
 
     // We found more than one candidate
     if candidates.peek().is_some() {
@@ -233,5 +233,18 @@ impl BuildOpt {
     /// Best guess for the build artifact associated with this `BuildOpt`
     pub(crate) fn artifact(&self) ->  Result<PathBuf, Error>{
         Ok(self.filenames[0].clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_ops() {
+        let json = "
+{\"features\":[],\"filenames\":[\"/home/christian/repos/rust/cargo-dbg/target/debug/cargo_dbg-813f65328e31d537\"],\"fresh\":true,\"package_id\":\"cargo-dbg 0.1.0 (path+file:///home/christian/repos/rust/cargo-dbg)\",\"profile\":{\"debug_assertions\":true,\"debuginfo\":2,\"opt_level\":\"0\",\"overflow_checks\":true,\"test\":true},\"reason\":\"compiler-artifact\",\"target\":{\"crate_types\":[\"bin\"],\"edition\":\"2015\",\"kind\":[\"bin\"],\"name\":\"cargo-dbg\",\"src_path\":\"/home/christian/repos/rust/cargo-dbg/src/main.rs\"}
+}";
+        let _opts: BuildOpt = serde_json::from_str(json).unwrap();
     }
 }

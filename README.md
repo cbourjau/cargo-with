@@ -16,20 +16,43 @@ cargo install cargo-with
 Usage
 -----
 The core idea of `cargo-with` is to fit well into your development workflow using `cargo run` and `cargo test`.
-All you have to do is add `with <some_binary> -- ` in front of your usual `cargo` commands.
-For example, in order to run your tests through `gdb` do:
-```shell
-cargo with gdb -- test
-```
+All you have to do is add `with <some-command> -- ` in front of your usual `cargo` commands. `cargo-with` will then try it's best to identify the created artifact and run it with your command.
 
-However, this would run all your tests in multiple threads, you probably want to filter on your tests.
-More complicated calling signatures can be accommodated by using `{bin}` and `{args}` placeholders in the binary string:
+E.g. in order to run your binary through `gdb` do:
 
 ```shell
-cargo with "gdb --args {bin} {args}" -- tests -- the_name_of_my_test
+cargo with gdb -- run
 ```
-`{bin}` is replaced by the path to the produced build artifact while `{args}` is replaced by the arguments given after the last ` -- `.
-If `{bin}` or `{args}` are not provided they are automatically appended to the end of the command.
+
+This will firstly build the binary using `cargo build`, and then run `gdb {bin} {args}`, where `{bin}` is the path to the produced artifact and `{args}` is the arguments provided to cargo after the last `--` (in this case none).
+
+
+### Moving arguments around
+
+Instead of implicitly appending the artifact path and arguments to the provided command, you could also use placeholders to tell `cargo-with` where to place them. This can be done by using `{bin}` and `{args}` in the provided command.
+
+```
+cargo with "echo {args} {bin}" -- run -- --argument1 --argument2
+```
+
+I the above command, `{bin}` will be replaced by the path to the built artifact while `{args}` will be replaced by `--argument1 --argument2`.
+
+### Disambiguating multiple binaries
+
+There are often mulitiple candiate artifacts when cargo builds your project, especially when building tests. Therefore `cargo-with` may in some situations need more information to select your preferred candidate. This is done via explicitly specificing to cargo which artifact to build through the use of `--bin <name-of-binary>`, `--example <name-of-example>`, `--lib <name-of-lib>`* or `--test <name-of-unit-test>`*.
+
+```
+cargo with "gdb --args {bin} {args}" -- test --bin my-app
+cargo with "gdb --args {bin} {args}" -- test --lib my-library
+cargo with "gdb --args {bin} {args}" -- test --test my-unit-test
+cargo with "gdb --args {bin} {args}" -- test --example my-example
+```
+
+*Only avaliable when using `cargo test`
+
+### Examining tests
+
+Cargo will run tests in parallel, hence running `cargo with gdb -- test --lib my-library` is probably not what you want. You can examine a single test by giving the name of the test function to cargo; `cargo with gdb -- test --lib my-library my_test_function_name`.
 
 Note about `cargo run`
 ----------------------

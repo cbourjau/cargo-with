@@ -48,7 +48,7 @@ pub(crate) fn runner<'a>(
     // Replace the {bin} and {args} placeholders
     let expanded_args: Vec<_> = args.into_iter()
         // We have to use a box because impl Trait is not supported in closures
-        .flat_map(|s| -> Box<Iterator<Item = &str>> {
+        .flat_map(|s| -> Box<dyn Iterator<Item = &str>> {
             match s {
             "{bin}" => Box::new(once(artifact_str)),
             "{args}" => Box::new(args_after_cargo_cmd.clone()),

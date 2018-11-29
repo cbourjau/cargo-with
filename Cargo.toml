@@ -1,6 +1,6 @@
 [package]
 name = "cargo-with"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["cbourjau <christian.bourjau@cern.ch>"]
 categories = [
     "development-tools",

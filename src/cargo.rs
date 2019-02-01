@@ -71,13 +71,20 @@ impl<'a> Cmd<'a> {
     }
     /// Turn the arguements into a space separated string
     fn args_str(&self) -> String {
-        self.args().fold(String::new(), |mut acc, arg| {
-            if !acc.is_empty() {
-                acc.push(' ');
-            }
-            acc += arg;
-            acc
-        })
+        self.args()
+            // Instead of expanding an initially empty string, we turn the
+            // first element into a `String` and then append to it. This also
+            // ensures that we only put spaces between arguments and not at the
+            // front/end of the string
+            .fold(None, |opt: Option<String>, arg| {
+                opt.map(|mut s| {
+                    s.push(' ');
+                    s.push_str(arg);
+                    s
+                })
+                .or_else(|| Some(arg.to_string()))
+            })
+            .unwrap_or_default()
     }
 
     /// Run the cargo command and get the output back as a vector

@@ -1,9 +1,10 @@
+use failure::{err_msg, Error};
+use log::debug;
+
 use std::iter::once;
 use std::process::Command;
 
-use failure::{err_msg, Error};
-
-use cargo;
+use crate::cargo;
 
 /// `cargo_cmd_iter` is an iterator over the cargo subcommand with arguments
 /// `cmd_iter` is an iterator over the the command to run the binary with

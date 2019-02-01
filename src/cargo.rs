@@ -222,15 +222,15 @@ pub(crate) fn select_buildopt<'a>(
     // We found more than one candidate
     if candidates.peek().is_some() {
         // Make a error string including all the possible candidates
-        let candidates_str = candidates
-            .map(|opt| format!("\t- {} ({})", opt.target.name, opt.target.kind[0]))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let candidates_str: String = iter::once(first)
+            .chain(candidates)
+            .map(|opt| format!("\t- {} ({})\n", opt.target.name, opt.target.kind[0]))
+            .collect();
 
         if is_test {
-            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--test`, `--example`, `--bin` or `--lib` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+            Err(format_err!("Found more than one possible candidate:\n\n{}\n\nPlease use `--test`, `--example`, `--bin` or `--lib` to specify exactly what binary you want to examine", candidates_str))?
         } else {
-            Err(format_err!("Found more than one possible candidate:\n\n\t- {} ({})\n{}\n\nPlease use `--example` or `--bin` to specify exactly what binary you want to examine", first.target.name, first.target.kind[0], candidates_str))?
+            Err(format_err!("Found more than one possible candidate:\n\n{}\n\nPlease use `--example` or `--bin` to specify exactly what binary you want to examine", candidates_str))?
         }
     }
     Ok(first)

@@ -28,12 +28,13 @@ pub(crate) fn runner<'a>(
     let buildopt = cargo::select_buildopt(&buildopts, cargo_cmd.kind())?;
     let artifact = buildopt.artifact()?;
     let artifact_str = artifact
-        .to_str().ok_or_else(|| err_msg(
-            "Filename of artifact contains non-valid UTF-8 characters",
-        ))?;
+        .to_str()
+        .ok_or_else(|| err_msg("Filename of artifact contains non-valid UTF-8 characters"))?;
 
     // The name of the binary to run on the artifact
-    let cmd = cmd_iter.next().ok_or_else(|| err_msg("Empty with command"))?;
+    let cmd = cmd_iter
+        .next()
+        .ok_or_else(|| err_msg("Empty with command"))?;
 
     // The remaining elements are the arguments to the binary
     // Since we will have to search for {bin} and {args} we just
@@ -46,15 +47,17 @@ pub(crate) fn runner<'a>(
         args.push("{args}");
     }
     // Replace the {bin} and {args} placeholders
-    let expanded_args: Vec<_> = args.into_iter()
+    let expanded_args: Vec<_> = args
+        .into_iter()
         // We have to use a box because impl Trait is not supported in closures
         .flat_map(|s| -> Box<dyn Iterator<Item = &str>> {
             match s {
-            "{bin}" => Box::new(once(artifact_str)),
-            "{args}" => Box::new(args_after_cargo_cmd.clone()),
-            _ => Box::new(once(s)),
-            }}).
-        collect();
+                "{bin}" => Box::new(once(artifact_str)),
+                "{args}" => Box::new(args_after_cargo_cmd.clone()),
+                _ => Box::new(once(s)),
+            }
+        })
+        .collect();
 
     debug!("Executing `{} {}`", cmd, expanded_args.join(" "));
 

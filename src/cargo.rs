@@ -1,8 +1,8 @@
 use failure::{err_msg, format_err, Error};
 
+use std::path::PathBuf;
 use std::process::Command;
 use std::{iter, str};
-use std::path::PathBuf;
 
 const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json", "--quiet"];
 
@@ -175,7 +175,7 @@ struct Target {
     edition: String,
     kind: Vec<TargetKind>,
     name: String,
-    src_path: std::path::PathBuf,
+    src_path: PathBuf,
 }
 
 /// Selects the buildopt which fits with the requirements
@@ -231,7 +231,7 @@ pub(crate) fn select_buildopt<'a>(
 
 impl BuildOpt {
     /// Best guess for the build artifact associated with this `BuildOpt`
-    pub(crate) fn artifact(&self) ->  Result<PathBuf, Error>{
+    pub(crate) fn artifact(&self) -> Result<PathBuf, Error> {
         Ok(self.filenames[0].clone())
     }
 }

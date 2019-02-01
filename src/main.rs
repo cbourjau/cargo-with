@@ -8,12 +8,11 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
-
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
 
-mod runner;
 mod cargo;
+mod runner;
 use runner::runner;
 
 const COMMAND_NAME: &str = "with";
@@ -21,7 +20,7 @@ const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
 
 // Make a separate runner to print errors using Display instead of Debug
-fn main() -> Result<(), Error>{
+fn main() -> Result<(), Error> {
     env_logger::init();
 
     let app = create_app();
@@ -47,16 +46,15 @@ fn process_matches<'a>(
         .subcommand_matches(COMMAND_NAME)
         .ok_or_else(|| err_msg("Failed to parse the correct subcommand"))?;
 
-    let cargo_cmd_iter = matches.values_of("cargo-cmd").ok_or_else(|| err_msg(
-        "Failed to parse the cargo command producing the artifact",
-    ))?;
+    let cargo_cmd_iter = matches
+        .values_of("cargo-cmd")
+        .ok_or_else(|| err_msg("Failed to parse the cargo command producing the artifact"))?;
 
     // The string describing how to envoke the child process
     let cmd_iter = matches
         .value_of("with-cmd")
-        .ok_or_else(|| err_msg(
-            "Failed to parse the command to run with the artifact",
-        ))?.trim()
+        .ok_or_else(|| err_msg("Failed to parse the command to run with the artifact"))?
+        .trim()
         .split(' ');
 
     Ok((cargo_cmd_iter, cmd_iter))
@@ -83,7 +81,8 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
                     clap::Arg::from_usage("<cargo-cmd> 'The cargo subcommand `test` or `run`'")
                         .raw(true),
                 ),
-        ).settings(&[AppSettings::SubcommandRequired])
+        )
+        .settings(&[AppSettings::SubcommandRequired])
 }
 
 #[cfg(test)]

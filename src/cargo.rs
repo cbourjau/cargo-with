@@ -24,7 +24,7 @@ impl CmdKind {
     }
     /// Returns the respective command kind as a command to pass to
     /// artifact generation
-    fn as_artifact_cmd(&self) -> &'static str {
+    fn as_artifact_cmd(self) -> &'static str {
         match self {
             CmdKind::Run => "build",
             CmdKind::Test => "test",
@@ -66,8 +66,8 @@ impl<'a> Cmd<'a> {
     /// arguments (`DEFAULT_CARGO_ARGS`).
     fn args(&self) -> impl Iterator<Item = &str> + Clone {
         iter::once(self.kind.as_artifact_cmd())
-            .chain(DEFAULT_CARGO_ARGS.iter().map(|s| *s))
-            .chain(self.args.iter().map(|s| *s))
+            .chain(DEFAULT_CARGO_ARGS.iter().cloned())
+            .chain(self.args.iter().cloned())
     }
     /// Turn the arguements into a space separated string
     fn args_str(&self) -> String {

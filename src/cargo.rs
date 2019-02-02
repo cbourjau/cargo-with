@@ -1,5 +1,6 @@
 use failure::{err_msg, format_err, Error};
 use log::debug;
+use serde::Deserialize;
 
 use std::path::PathBuf;
 use std::process::Command;

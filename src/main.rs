@@ -1,12 +1,3 @@
-extern crate clap;
-extern crate env_logger;
-extern crate failure;
-extern crate log;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
 use log::debug;

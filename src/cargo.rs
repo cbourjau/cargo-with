@@ -1,4 +1,6 @@
 use failure::{err_msg, format_err, Error};
+use log::debug;
+use serde::Deserialize;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -160,7 +162,7 @@ enum TargetKind {
 }
 
 impl std::fmt::Display for TargetKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match *self {
             TargetKind::Example => "example",
             TargetKind::Test => "test",

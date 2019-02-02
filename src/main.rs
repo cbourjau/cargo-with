@@ -1,19 +1,11 @@
-extern crate clap;
-extern crate env_logger;
-extern crate failure;
-#[macro_use]
-extern crate log;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
+use log::debug;
 
 mod cargo;
 mod runner;
-use runner::runner;
+
+use crate::runner::runner;
 
 const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
@@ -33,7 +25,7 @@ fn main() -> Result<(), Error> {
 }
 
 fn process_matches<'a>(
-    matches: &'a clap::ArgMatches,
+    matches: &'a clap::ArgMatches<'_>,
 ) -> Result<
     (
         impl Iterator<Item = &'a str> + Clone,

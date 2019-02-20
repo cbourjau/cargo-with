@@ -1,0 +1,7 @@
+[package]
+name = "simple-binary"
+version = "0.1.0"
+authors = ["cbourjau <christian.bourjau@cern.ch>"]
+edition = "2018"
+
+[dependencies]

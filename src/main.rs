@@ -53,11 +53,12 @@ fn process_matches<'a>(
 }
 
 fn create_app<'a, 'b>() -> App<'a, 'b> {
-    let usage = concat!(
+    let with_usage = concat!(
         "<with-cmd> 'Command executed with the cargo-created binary. ",
-        "Use {bin} to denote the binary. ",
-        "If omitted the {bin} is added as the last argument'"
+        "The placeholders {bin} {args} denote the path to the binary and additional arguments.",
+        "If omitted `{bin} {args}` is appended to `with-cmd`'"
     );
+    let cargo_usage = "<cargo-cmd> 'The Cargo subcommand starting with `test`, `run`, or `bench`'";
     App::new(COMMAND_NAME)
         .about(COMMAND_DESCRIPTION)
         // We have to lie about our binary name since this will be a third party
@@ -68,11 +69,15 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
         .subcommand(
             SubCommand::with_name(COMMAND_NAME)
                 .about(COMMAND_DESCRIPTION)
-                .arg(Arg::from_usage(&usage))
-                .arg(
-                    clap::Arg::from_usage("<cargo-cmd> 'The cargo subcommand `test` or `run`'")
-                        .raw(true),
-                ),
+                .arg(Arg::from_usage(&with_usage))
+                .arg(clap::Arg::from_usage(cargo_usage).raw(true))
+                .after_help(r#"
+EXAMPLES:
+   cargo with echo -- run
+   cargo with "gdb --args" -- run
+   cargo with "echo {args} {bin}" -- test -- myargs
+"#
+                )
         )
         .settings(&[AppSettings::SubcommandRequired])
 }

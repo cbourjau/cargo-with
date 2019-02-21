@@ -19,8 +19,18 @@ const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
 
+fn main() {
+    match mainer() {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 // Make a separate runner to print errors using Display instead of Debug
-fn main() -> Result<(), Error> {
+fn mainer() -> Result<(), Error> {
     env_logger::init();
 
     let app = create_app();

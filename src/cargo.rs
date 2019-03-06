@@ -216,14 +216,38 @@ pub(crate) fn select_buildopt<'a>(
             }
         })
         .collect();
+
     // We expect exactly one candidate; everything else is an error
     match candidates.as_slice() {
         [] => Err(err_msg("No suitable build artifacts found.")),
         [the_one] => Ok(the_one),
-        the_many => Err(format_err!(
-            "Found several artifact candidates: \n :{:?}",
-            the_many
-        )),
+        the_many => {
+            // Use some effort to create a pretty list of candidates.
+            let many_fmt = the_many
+                .iter()
+                .map(|opt| {
+                    format!(
+                        "- {} ({}){}\n",
+                        opt.package_id,
+                        opt.target
+                            .kind
+                            .iter()
+                            .map(|k| k.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        if opt.profile.test { " [test]" } else { "" }
+                    )
+                })
+                .collect::<String>();
+
+            Err(format_err!(
+                concat!(
+                    "Found several artifact candidates:\n{}\nTo be more specific use `--test`, ",
+                    "`--bin`, `--lib` or `--examples` based on which binary you want to examine."
+                ),
+                many_fmt
+            ))
+        }
     }
 }
 

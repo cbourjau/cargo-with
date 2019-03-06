@@ -6,8 +6,19 @@ os:
 rust:
   - stable
   - beta
+  - nightly
 
 script:
   - cargo build --verbose --all --release
   - cargo test --verbose --all --release
   - cargo install --path=. --force
+  - (cd ./example_projects/simple-binary/ && bash run.sh)
+  - (cd ./example_projects/simple-library/ && bash run.sh)
+  - |
+    if [[ "$TRAVIS_RUST_VERSION" == nightly* ]]; then
+      (cd ./example_projects/benchmark/ && bash run.sh)
+    fi
+
+matrix:
+  allow_failures:
+    - rust: nightly

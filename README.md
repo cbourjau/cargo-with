@@ -1,7 +1,6 @@
 cargo-with
 ==========
-`cargo-with` is a cargo-subcommand making it easy to run the build artifacts produced by `cargo run` or `cargo build`
-through other tools such as `gdb`, `strace`, `valgrind`, `rr`, or whatever else you may come up with.
+`cargo-with` is a cargo-subcommand making it easy to run the build artifacts produced by `cargo run`, `cargo build` or `cargo bench` through other tools such as `gdb`, `strace`, `valgrind`, `rr`, or whatever else you may come up with.
 
 [![Build Status](https://travis-ci.org/cbourjau/cargo-with.svg)](https://travis-ci.org/cbourjau/cargo-with)
 [![crates.io](https://img.shields.io/crates/v/cargo-with.svg)](https://crates.io/crates/cargo-with)
@@ -15,7 +14,7 @@ cargo install cargo-with
 ```
 Usage
 -----
-The core idea of `cargo-with` is to fit well into your development workflow using `cargo run` and `cargo test`.
+The core idea of `cargo-with` is to fit well into your development workflow using `cargo <subcommand>`.
 All you have to do is add `with <some-command> -- ` in front of your usual `cargo` commands. `cargo-with` will then try it's best to identify the created artifact and run it with your command.
 
 E.g. in order to run your binary through `gdb` do:

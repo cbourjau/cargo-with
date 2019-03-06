@@ -70,8 +70,15 @@ impl<'a> Cmd<'a> {
     /// Includes the type of command (e.g `test`, `run`) and the default
     /// arguments (`DEFAULT_CARGO_ARGS`).
     fn args(&self) -> impl Iterator<Item = &str> + Clone {
+        let extra_args = match self.kind {
+            // `--no-run` ensures that we only compile when testing/benching.
+            CmdKind::Test | CmdKind::Bench => Some("--no-run"),
+            _ => None,
+        };
+
         iter::once(self.kind.as_artifact_cmd())
             .chain(DEFAULT_CARGO_ARGS.iter().cloned())
+            .chain(extra_args)
             .chain(self.args.iter().cloned())
     }
     /// Turn the arguements into a space separated string

@@ -12,6 +12,7 @@ const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json", "--quiet"];
 pub(crate) enum CmdKind {
     Run,
     Test,
+    Bench,
 }
 
 impl CmdKind {
@@ -21,6 +22,7 @@ impl CmdKind {
         match s {
             "run" => Some(Run),
             "test" => Some(Test),
+            "bench" => Some(Bench),
             _ => None,
         }
     }
@@ -30,6 +32,7 @@ impl CmdKind {
         match self {
             CmdKind::Run => "build",
             CmdKind::Test => "test",
+            CmdKind::Bench => "bench",
         }
     }
 }
@@ -194,48 +197,34 @@ pub(crate) fn select_buildopt<'a>(
     opts: impl IntoIterator<Item = &'a BuildOpt>,
     cmd_kind: CmdKind,
 ) -> Result<&'a BuildOpt, Error> {
-    let opts = opts.into_iter();
-
     // Target kinds we want to look for
     let look_for = &[TargetKind::Bin, TargetKind::Example, TargetKind::Test];
-    let is_test = cmd_kind == CmdKind::Test;
 
     // Find candidates with the possible target types
-    let mut candidates = opts
+    let candidates: Vec<_> = opts
+        .into_iter()
         .filter(|opt| {
-            // When run as a test we only care about the binary where the profile
-            // is set as `test`
-            if is_test {
-                opt.profile.test
-            } else {
-                opt.target
+            // When run as a test or bench we only care about the
+            // binary where the profile is set as `test`
+            match cmd_kind {
+                CmdKind::Test | CmdKind::Bench => opt.profile.test,
+                CmdKind::Run => opt
+                    .target
                     .kind
                     .iter()
-                    .any(|kind| look_for.iter().any(|lkind| lkind == kind))
+                    .any(|kind| look_for.iter().any(|lkind| lkind == kind)),
             }
         })
-        .peekable();
-
-    // Get the first candidate
-    let first = candidates
-        .next()
-        .ok_or_else(|| err_msg("Found no possible candidates"))?;
-
-    // We found more than one candidate
-    if candidates.peek().is_some() {
-        // Make a error string including all the possible candidates
-        let candidates_str: String = iter::once(first)
-            .chain(candidates)
-            .map(|opt| format!("\t- {} ({})\n", opt.target.name, opt.target.kind[0]))
-            .collect();
-
-        if is_test {
-            Err(format_err!("Found more than one possible candidate:\n\n{}\n\nPlease use `--test`, `--example`, `--bin` or `--lib` to specify exactly what binary you want to examine", candidates_str))?
-        } else {
-            Err(format_err!("Found more than one possible candidate:\n\n{}\n\nPlease use `--example` or `--bin` to specify exactly what binary you want to examine", candidates_str))?
-        }
+        .collect();
+    // We expect exactly one candidate; everything else is an error
+    match candidates.as_slice() {
+        [] => Err(err_msg("No suitable build artifacts found.")),
+        [the_one] => Ok(the_one),
+        the_many => Err(format_err!(
+            "Found several artifact candidates: \n :{:?}",
+            the_many
+        )),
     }
-    Ok(first)
 }
 
 impl BuildOpt {

@@ -61,3 +61,7 @@ the binary after compilation.
 Future of this crate
 --------------------
 There are currently [open issues](https://github.com/rust-lang/cargo/issues/3670) upstream in cargo which might make this crate redundant in the future.
+
+Contributors
+------------
+This crate would not be what it is today without the many contributions by [@barskern](https://github.com/barskern)!

@@ -2,7 +2,10 @@
 name = "cargo-with"
 version = "0.2.0"
 edition = "2018"
-authors = ["cbourjau <christian.bourjau@cern.ch>"]
+authors = [
+	"cbourjau <christianb@posteo.de>",
+	"Ole Martin Ruud <barskern@outlook.com>",
+]
 categories = [
     "development-tools",
     "development-tools::cargo-plugins",

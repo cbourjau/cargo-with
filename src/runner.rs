@@ -1,7 +1,6 @@
 use failure::{err_msg, Error};
 use log::debug;
 
-use std::iter::once;
 use std::process::Command;
 
 use crate::cargo;
@@ -37,30 +36,33 @@ pub(crate) fn runner<'a>(
         .next()
         .ok_or_else(|| err_msg("Empty with command"))?;
 
-    // The remaining elements are the arguments to the binary
-    // Since we will have to search for {bin} and {args} we just
-    // collect it into Vec here for simplicity.
-    let mut args: Vec<&str> = cmd_iter.collect();
-    if args.iter().find(|&&s| s == "{bin}").is_none() {
-        args.push("{bin}");
+    // To ensure that we can always handle situations where the user puts quotes
+    // around the special arguments, we rather treat the arguments as a string and use search and
+    // replace to append the artifact string and additional arguments. This is a detour that could
+    // perhaps be done in a more elegant way.
+    let mut args_str = cmd_iter.collect::<Vec<_>>().join(" ");
+    if args_str.contains("{bin}") {
+        args_str = args_str.replace("{bin}", artifact_str);
+    } else {
+        args_str.push(' ');
+        args_str.push_str(artifact_str);
     }
-    if args.iter().find(|&&s| s == "{args}").is_none() {
-        args.push("{args}");
+    if args_str.contains("{args}") {
+        args_str = args_str.replace(
+            "{args}",
+            &args_after_cargo_cmd.collect::<Vec<_>>().join(" "),
+        );
+    } else {
+        args_str.push(' ');
+        args_str.push_str(&args_after_cargo_cmd.collect::<Vec<_>>().join(" "));
     }
-    // Replace the {bin} and {args} placeholders
-    let expanded_args: Vec<_> = args
-        .into_iter()
-        // We have to use a box because impl Trait is not supported in closures
-        .flat_map(|s| -> Box<dyn Iterator<Item = &str>> {
-            match s {
-                "{bin}" => Box::new(once(artifact_str)),
-                "{args}" => Box::new(args_after_cargo_cmd.clone()),
-                _ => Box::new(once(s)),
-            }
-        })
-        .collect();
+    let expanded_args = args_str.split_whitespace();
 
-    debug!("Executing `{} {}`", cmd, expanded_args.join(" "));
+    debug!(
+        "Executing `{} {}`",
+        cmd,
+        expanded_args.clone().collect::<Vec<_>>().join(" ")
+    );
 
     Command::new(cmd)
         .args(expanded_args)

@@ -3,10 +3,10 @@ use log::debug;
 use serde::Deserialize;
 
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::{iter, str};
 
-const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json", "--quiet"];
+const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CmdKind {
@@ -98,14 +98,18 @@ impl<'a> Cmd<'a> {
 
         let build_out = Command::new("cargo")
             .args(self.args())
+            // We rather inherit the stderr of the parent process so that we can print live build
+            // information to the user instead of waiting with a blank prompt while building their
+            // binary. This does not affect the build output of the command which will be printed
+            // to stdout.
+            .stderr(Stdio::inherit())
             .output()
             .map_err(|_| format_err!("Unable to run cargo command: `cargo {}`", self.args_str()))?;
 
         if !build_out.status.success() {
             Err(format_err!(
-                "{}\n{}\nCargo subcommand failed. Try running the original cargo command (without cargo-with)",
-                str::from_utf8(&build_out.stderr).unwrap(),
-                str::from_utf8(&build_out.stdout).unwrap()
+                "Cargo command failed. Try running the follwing command: cargo {}",
+                self.args().collect::<Vec<_>>().join(" ")
             ))?;
         }
 

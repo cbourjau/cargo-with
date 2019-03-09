@@ -67,46 +67,38 @@ impl<'a> Cmd<'a> {
     }
     /// Get the arguments which would be passed to `cargo`
     ///
-    /// Includes the type of command (e.g `test`, `run`) and the default
-    /// arguments (`DEFAULT_CARGO_ARGS`).
+    /// Includes the type of command (e.g `test`, `run`), the default arguments
+    /// (`DEFAULT_CARGO_ARGS`) and the `--no-run` flag if we are trying to compiling
+    /// tests/benchmarks. `--no-run` ensures that we do not run the resulting binary when compiling
+    /// tests/benchmarks.
     fn args(&self) -> impl Iterator<Item = &str> + Clone {
-        let extra_args = match self.kind {
-            // `--no-run` ensures that we only compile when testing/benching.
+        let no_run_flag = match self.kind {
             CmdKind::Test | CmdKind::Bench => Some("--no-run"),
             _ => None,
         };
 
         iter::once(self.kind.as_artifact_cmd())
             .chain(DEFAULT_CARGO_ARGS.iter().cloned())
-            .chain(extra_args)
+            .chain(no_run_flag)
             .chain(self.args.iter().cloned())
-    }
-    /// Turn the arguements into a space separated string
-    fn args_str(&self) -> String {
-        self.args()
-            // Instead of expanding an initially empty string, we turn the
-            // first element into a `String` and then append to it. This also
-            // ensures that we only put spaces between arguments and not at the
-            // front/end of the string
-            .fold(None, |opt: Option<String>, arg| {
-                opt.map(|mut s| {
-                    s.push(' ');
-                    s.push_str(arg);
-                    s
-                })
-                .or_else(|| Some(arg.to_string()))
-            })
-            .unwrap_or_default()
     }
 
     /// Run the cargo command and get the output back as a vector
     pub(crate) fn run(&self) -> Result<Vec<BuildOpt>, Error> {
-        debug!("Executing `cargo {}`", self.args_str());
+        debug!(
+            "Executing `cargo {}`",
+            self.args().collect::<Vec<_>>().join(" ")
+        );
 
         let build_out = Command::new("cargo")
             .args(self.args())
             .output()
-            .map_err(|_| format_err!("Unable to run cargo command: `cargo {}`", self.args_str()))?;
+            .map_err(|_| {
+                format_err!(
+                    "Unable to run cargo command: `cargo {}`",
+                    self.args().collect::<Vec<_>>().join(" ")
+                )
+            })?;
 
         if !build_out.status.success() {
             Err(format_err!(
@@ -120,7 +112,7 @@ impl<'a> Cmd<'a> {
             .map_err(|_| {
                 format_err!(
                     "Output of `cargo {}` contained invalid UTF-8 characters",
-                    self.args_str()
+                    self.args().collect::<Vec<_>>().join(" ")
                 )
             })?
             .lines()

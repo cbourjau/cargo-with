@@ -36,33 +36,26 @@ pub(crate) fn runner<'a>(
         .next()
         .ok_or_else(|| err_msg("Empty with command"))?;
 
-    // To ensure that we can always handle situations where the user puts quotes
-    // around the special arguments, we rather treat the arguments as a string and use search and
-    // replace to append the artifact string and additional arguments. This is a detour that could
-    // perhaps be done in a more elegant way.
-    let mut args_str = cmd_iter.collect::<Vec<_>>().join(" ");
-    if args_str.contains("{bin}") {
-        args_str = args_str.replace("{bin}", artifact_str);
-    } else {
-        args_str.push(' ');
-        args_str.push_str(artifact_str);
+    let mut expanded_args = vec![];
+    let mut found_bin = false;
+    let mut found_args = false;
+    for arg in cmd_iter {
+        if arg == "{args}" {
+            found_args = true;
+            expanded_args.extend(args_after_cargo_cmd.clone().map(|arg| arg.to_owned()));
+        } else {
+            found_bin |= arg.contains("{bin}");
+            expanded_args.push(arg.replace("{bin}", artifact_str));
+        }
     }
-    if args_str.contains("{args}") {
-        args_str = args_str.replace(
-            "{args}",
-            &args_after_cargo_cmd.collect::<Vec<_>>().join(" "),
-        );
-    } else {
-        args_str.push(' ');
-        args_str.push_str(&args_after_cargo_cmd.collect::<Vec<_>>().join(" "));
+    if !found_bin {
+        expanded_args.push(artifact_str.to_owned());
     }
-    let expanded_args = args_str.split_whitespace();
+    if !found_args {
+        expanded_args.extend(args_after_cargo_cmd.clone().map(|arg| arg.to_owned()));
+    }
 
-    debug!(
-        "Executing `{} {}`",
-        cmd,
-        expanded_args.clone().collect::<Vec<_>>().join(" ")
-    );
+    debug!("Executing `{} {}`", cmd, expanded_args.join(" "));
 
     Command::new(cmd)
         .args(expanded_args)

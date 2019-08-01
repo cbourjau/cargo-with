@@ -1,5 +1,6 @@
 use failure::{err_msg, Error};
 use log::debug;
+use void::Void;
 
 use std::process::Command;
 
@@ -10,7 +11,7 @@ use crate::cargo;
 pub(crate) fn runner<'a>(
     mut cargo_cmd_iter: impl Iterator<Item = &'a str> + Clone,
     mut cmd_iter: impl Iterator<Item = &'a str> + Clone,
-) -> Result<(), Error> {
+) -> Result<Void, Error> {
     // The cargo subcommand including arguments
     let subcmd_str: Vec<_> = cargo_cmd_iter
         .by_ref()
@@ -64,11 +65,21 @@ pub(crate) fn runner<'a>(
         expanded_args.clone().collect::<Vec<_>>().join(" ")
     );
 
-    Command::new(cmd)
-        .args(expanded_args)
-        .spawn()
-        .expect("Failed to spawn child process")
-        .wait()?;
+    exec(Command::new(cmd).args(expanded_args))
+}
 
-    Ok(())
+#[cfg(unix)]
+fn exec(command: &mut Command) -> Result<Void, Error> {
+    use std::os::unix::process::CommandExt;
+    Err(command.exec())?
+}
+
+#[cfg(not(unix))]
+fn exec(command: &mut Command) -> Result<Void, Error> {
+    std::process::exit(
+        command
+            .status()?
+            .code()
+            .expect("Process terminated by signal"),
+    )
 }

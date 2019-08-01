@@ -1,6 +1,7 @@
 use clap::{App, AppSettings, Arg, SubCommand};
 use failure::{err_msg, Error};
 use log::debug;
+use void::{Void, unreachable};
 
 mod cargo;
 mod runner;
@@ -13,7 +14,7 @@ const COMMAND_DESCRIPTION: &str =
 
 fn main() {
     match mainer() {
-        Ok(()) => {}
+        Ok(v) => unreachable(v),
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);
@@ -22,7 +23,7 @@ fn main() {
 }
 
 // Make a separate runner to print errors using Display instead of Debug
-fn mainer() -> Result<(), Error> {
+fn mainer() -> Result<Void, Error> {
     env_logger::init();
 
     let app = create_app();

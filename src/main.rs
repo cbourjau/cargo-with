@@ -1,19 +1,22 @@
-use clap::{App, AppSettings, Arg, SubCommand};
+use std::process::Command;
+
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use failure::{err_msg, Error};
 use log::debug;
-use void::{Void, unreachable};
+use void::{unreachable, Void};
 
-mod cargo;
-mod runner;
+mod cargo_command;
+mod with_command;
 
-use crate::runner::runner;
+use crate::with_command::WithCmd;
+use crate::cargo_command::CargoCmd;
 
 const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
     "A third-party cargo extension to run the build artifacts through tools like `gdb`";
 
 fn main() {
-    match mainer() {
+    match try_main() {
         Ok(v) => unreachable(v),
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -23,7 +26,7 @@ fn main() {
 }
 
 // Make a separate runner to print errors using Display instead of Debug
-fn mainer() -> Result<Void, Error> {
+fn try_main() -> Result<Void, Error> {
     env_logger::init();
 
     let app = create_app();
@@ -31,36 +34,41 @@ fn mainer() -> Result<Void, Error> {
 
     debug!("CLI matches: {:#?}", matches);
 
-    let (cargo_cmd_iter, cmd_iter) = process_matches(&matches)?;
-    runner(cargo_cmd_iter, cmd_iter)
+    let (with_cmd, cargo_cmd) = process_matches(&matches)?;
+    // TODO: This should also be a void return type
+    let artifact_path = cargo_cmd.run()?.artifact()?;
+    let artifact = artifact_path
+        .to_str()
+        .ok_or_else(|| err_msg("Binary path is not valid utf-8"))?;
+    let mut finalized_with_cmd = with_cmd.child_command(artifact)?;
+    exec(&mut finalized_with_cmd)
 }
 
-fn process_matches<'a>(
-    matches: &'a clap::ArgMatches<'_>,
-) -> Result<
-    (
-        impl Iterator<Item = &'a str> + Clone,
-        impl Iterator<Item = &'a str> + Clone,
-    ),
-    Error,
-> {
-    // The original cargo command
+/// Process command line arguments. The input is split up into three
+/// logical units:
+/// `<cargo-with-cmd> -- <cargo-command> -- <user-args>`
+/// Thus, the command `cargo with echo -- run -- my-args` is split up into
+/// `[echo]`, `[run]`, `[my-args]`
+fn process_matches<'a>(matches: &'a ArgMatches<'_>) -> Result<(WithCmd<'a>, CargoCmd<'a>), Error> {
+    // A prelude to work around the fact that this is run as `cargo
+    // with` and not `cargo-with`
     let matches = matches
         .subcommand_matches(COMMAND_NAME)
         .ok_or_else(|| err_msg("Failed to parse the correct subcommand"))?;
-
-    let cargo_cmd_iter = matches
-        .values_of("cargo-cmd")
-        .ok_or_else(|| err_msg("Failed to parse the cargo command producing the artifact"))?;
-
     // The string describing how to envoke the child process
-    let cmd_iter = matches
+    let raw_with_cmd = matches
         .value_of("with-cmd")
         .ok_or_else(|| err_msg("Failed to parse the command to run with the artifact"))?
-        .trim()
-        .split(' ');
-
-    Ok((cargo_cmd_iter, cmd_iter))
+        .trim();
+    // everything after the first `--`
+    let mut cargo_cmd_and_args = matches
+        .values_of("cargo-cmd")
+        .ok_or_else(|| err_msg("Failed to parse the cargo command producing the artifact"))?;
+    let cargo_cmd = cargo_cmd_and_args.by_ref().take_while(|&el| el != "--");
+    let cargo_cmd = CargoCmd::from_strs(cargo_cmd)?;
+    let trailing_args: Vec<_> = cargo_cmd_and_args.collect();
+    let with_cmd = WithCmd::new(raw_with_cmd, &trailing_args);
+    Ok((with_cmd, cargo_cmd))
 }
 
 fn create_app<'a, 'b>() -> App<'a, 'b> {
@@ -82,15 +90,32 @@ fn create_app<'a, 'b>() -> App<'a, 'b> {
                 .about(COMMAND_DESCRIPTION)
                 .arg(Arg::from_usage(&with_usage))
                 .arg(clap::Arg::from_usage(cargo_usage).raw(true))
-                .after_help(r#"
+                .after_help(
+                    r#"
 EXAMPLES:
    cargo with echo -- run
    cargo with "gdb --args" -- run
    cargo with "echo {args} {bin}" -- test -- myargs
-"#
-                )
+"#,
+                ),
         )
         .settings(&[AppSettings::SubcommandRequired])
+}
+
+#[cfg(unix)]
+fn exec(command: &mut Command) -> Result<Void, Error> {
+    use std::os::unix::process::CommandExt;
+    Err(command.exec())?
+}
+
+#[cfg(not(unix))]
+fn exec(command: &mut Command) -> Result<Void, Error> {
+    std::process::exit(
+        command
+            .status()?
+            .code()
+            .expect("Process terminated by signal"),
+    )
 }
 
 #[cfg(test)]
@@ -110,5 +135,22 @@ mod tests {
             "--",
             "test2",
         ]);
+    }
+
+    #[test]
+    fn exec_test_project() {
+        // TODO: Make this test much more generic!
+        let matches = create_app().get_matches_from(&["cargo", "with", "echo", "--", "run"]);
+        let (with_cmd, cargo_cmd) = process_matches(&matches).unwrap();
+        // TODO: This should also be a void return type
+        let artifact_path = cargo_cmd.run().unwrap().artifact().unwrap();
+        let artifact = artifact_path
+            .to_str()
+            .ok_or_else(|| err_msg("Binary path is not valid utf-8"))
+            .unwrap();
+
+        let mut with_cmd = with_cmd.child_command(artifact).unwrap();
+        with_cmd.current_dir("./example_projects/simple-binary/");
+        assert!(with_cmd.status().unwrap().success());
     }
 }

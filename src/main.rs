@@ -8,8 +8,8 @@ use void::{unreachable, Void};
 mod cargo_command;
 mod with_command;
 
-use crate::with_command::WithCmd;
 use crate::cargo_command::CargoCmd;
+use crate::with_command::WithCmd;
 
 const COMMAND_NAME: &str = "with";
 const COMMAND_DESCRIPTION: &str =
@@ -121,6 +121,42 @@ fn exec(command: &mut Command) -> Result<Void, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Evocations for test projects which are expected to succeed
+    const TEST_PROJECTS: &[(&str, &[&[&str]])] = &[
+        (
+            "./example_projects/simple-binary/",
+            &[
+                &["cargo", "with", "echo", "--", "run"],
+                &["cargo", "with", "echo {bin}", "--", "run"],
+                &["cargo", "with", "echo {bin} {args}", "--", "run"],
+                &["cargo", "with", "echo", "--", "run"],
+            ],
+        ),
+        (
+            "./example_projects/simple-library/",
+            &[
+                &["cargo", "with", "echo", "--", "test"],
+                &["cargo", "with", "echo {bin}", "--", "test"],
+                &["cargo", "with", "echo {bin} {args}", "--", "test"],
+                &["cargo", "with", "echo", "--", "test"],
+            ],
+        ),
+        (
+            "./example_projects/benchmark/",
+            &[&["cargo", "with", "echo", "--", "bench"]],
+        ),
+    ];
+    // Evocations for test projects which are expected to fail
+    const TEST_PROJECTS_FAILS: &[(&str, &[&[&str]])] = &[(
+        "/home/christian/repos/rust/cargo-dbg/example_projects/simple-binary/",
+        &[
+            &["cargo", "with", "echo"],
+            &["cargo", "with", "echo", "--"],
+            &["cargo", "with", "not-a-command"],
+            &["cargo", "with", "echo", "--", "not-a-cargo-command"],
+            &["cargo", "with", "not-a-command", "--", "run"],
+        ],
+    )];
 
     #[test]
     fn parse_args() {
@@ -138,19 +174,44 @@ mod tests {
     }
 
     #[test]
-    fn exec_test_project() {
-        // TODO: Make this test much more generic!
-        let matches = create_app().get_matches_from(&["cargo", "with", "echo", "--", "run"]);
-        let (with_cmd, cargo_cmd) = process_matches(&matches).unwrap();
-        // TODO: This should also be a void return type
-        let artifact_path = cargo_cmd.run().unwrap().artifact().unwrap();
-        let artifact = artifact_path
-            .to_str()
-            .ok_or_else(|| err_msg("Binary path is not valid utf-8"))
-            .unwrap();
+    fn exec_test_project_success() {
+        for (project_dir, evocs) in TEST_PROJECTS {
+            dbg!(project_dir);
+            for evoc in *evocs {
+                println!("Running {:?}", evoc);
+                let matches = create_app().get_matches_from(*evoc);
+                let (with_cmd, cargo_cmd) = process_matches(&matches).unwrap();
+                let artifact_path = cargo_cmd.run().unwrap().artifact().unwrap();
+                let artifact = artifact_path
+                    .to_str()
+                    .ok_or_else(|| err_msg("Binary path is not valid utf-8"))
+                    .unwrap();
+                let mut with_cmd = with_cmd.child_command(artifact).unwrap();
+                with_cmd.current_dir(project_dir);
+                assert!(with_cmd.status().unwrap().success());
+            }
+        }
+    }
 
-        let mut with_cmd = with_cmd.child_command(artifact).unwrap();
-        with_cmd.current_dir("./example_projects/simple-binary/");
-        assert!(with_cmd.status().unwrap().success());
+    #[test]
+    fn exec_test_project_fails() {
+        for (project_dir, evocs) in TEST_PROJECTS_FAILS {
+            for evoc in *evocs {
+                println!("Running {:?}", evoc);
+                if let Ok(matches) = create_app().get_matches_from_safe(*evoc) {
+                    if let Ok((with_cmd, cargo_cmd)) = process_matches(&matches) {
+                        let artifact_path = cargo_cmd.run().unwrap().artifact().unwrap();
+                        let artifact = artifact_path
+                            .to_str()
+                            .ok_or_else(|| err_msg("Binary path is not valid utf-8"))
+                            .unwrap();
+                        let mut with_cmd = with_cmd.child_command(artifact).unwrap();
+                        with_cmd.current_dir(project_dir);
+
+                        assert!(with_cmd.output().is_err());
+                    }
+                }
+            }
+        }
     }
 }

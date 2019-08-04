@@ -8,42 +8,20 @@ use std::{iter, str};
 
 const DEFAULT_CARGO_ARGS: &[&str] = &["--message-format=json"];
 
+#[derive(Debug, Clone)]
+pub(crate) struct CargoCmd<'a> {
+    kind: CmdKind,
+    args: Vec<&'a str>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CmdKind {
+enum CmdKind {
     Run,
     Test,
     Bench,
 }
 
-impl CmdKind {
-    /// Turns a string into a CmdKind
-    fn from_str(s: &str) -> Option<Self> {
-        use self::CmdKind::*;
-        match s {
-            "run" => Some(Run),
-            "test" => Some(Test),
-            "bench" => Some(Bench),
-            _ => None,
-        }
-    }
-    /// Returns the respective command kind as a command to pass to
-    /// artifact generation
-    fn as_artifact_cmd(self) -> &'static str {
-        match self {
-            CmdKind::Run => "build",
-            CmdKind::Test => "test",
-            CmdKind::Bench => "bench",
-        }
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct Cmd<'a> {
-    kind: CmdKind,
-    args: Vec<&'a str>,
-}
-
-impl<'a> Cmd<'a> {
+impl<'a> CargoCmd<'a> {
     /// Create a command from the given strings
     pub(crate) fn from_strs(strs: impl IntoIterator<Item = &'a str>) -> Result<Self, Error> {
         let mut strs = strs.into_iter();
@@ -57,14 +35,12 @@ impl<'a> Cmd<'a> {
                 })
             })?;
 
-        Ok(Cmd {
+        Ok(CargoCmd {
             kind,
             args: strs.collect(),
         })
     }
-    pub(crate) fn kind(&self) -> CmdKind {
-        self.kind
-    }
+
     /// Get the arguments which would be passed to `cargo`
     ///
     /// Includes the type of command (e.g `test`, `run`), the default arguments
@@ -84,7 +60,7 @@ impl<'a> Cmd<'a> {
     }
 
     /// Run the cargo command and get the output back as a vector
-    pub(crate) fn run(&self) -> Result<Vec<BuildOpt>, Error> {
+    pub(crate) fn run(&self) -> Result<CargoBuildOutput, Error> {
         debug!(
             "Executing `cargo {}`",
             self.args().collect::<Vec<_>>().join(" ")
@@ -112,7 +88,7 @@ impl<'a> Cmd<'a> {
             ))?;
         }
 
-        let opts = str::from_utf8(&build_out.stdout)
+        let elements = str::from_utf8(&build_out.stdout)
             .map_err(|_| {
                 format_err!(
                     "Output of `cargo {}` contained invalid UTF-8 characters",
@@ -121,15 +97,46 @@ impl<'a> Cmd<'a> {
             })?
             .lines()
             // FIXME: There are plenty of errors here! This should really be better handled!
-            .flat_map(serde_json::from_str::<BuildOpt>)
+            .flat_map(serde_json::from_str::<CargoBuildOutputElement>)
             .collect();
 
-        Ok(opts)
+        Ok(CargoBuildOutput {
+            cmd: self.clone(),
+            elements,
+        })
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub(crate) struct BuildOpt {
+impl CmdKind {
+    /// Turns a string into a CmdKind
+    fn from_str(s: &str) -> Option<Self> {
+        use self::CmdKind::*;
+        match s {
+            "run" => Some(Run),
+            "test" => Some(Test),
+            "bench" => Some(Bench),
+            _ => None,
+        }
+    }
+    /// Returns the respective command kind as a command to pass to
+    /// artifact generation
+    fn as_artifact_cmd(self) -> &'static str {
+        match self {
+            CmdKind::Run => "build",
+            CmdKind::Test => "test",
+            CmdKind::Bench => "bench",
+        }
+    }
+}
+
+/// Container holding the information of the executed cargo command
+pub(crate) struct CargoBuildOutput<'a> {
+    cmd: CargoCmd<'a>,
+    elements: Vec<CargoBuildOutputElement>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct CargoBuildOutputElement {
     features: Vec<String>,
     filenames: Vec<PathBuf>,
     fresh: bool,
@@ -139,7 +146,7 @@ pub(crate) struct BuildOpt {
     target: Target,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct Profile {
     debug_assertions: bool,
     debuginfo: Option<u32>,
@@ -184,7 +191,7 @@ impl std::fmt::Display for TargetKind {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct Target {
     crate_types: Vec<String>,
     edition: String,
@@ -193,71 +200,75 @@ struct Target {
     src_path: PathBuf,
 }
 
-/// Selects the buildopt which fits with the requirements
-///
-/// If there are multiple possible candidates, this will return an error
-pub(crate) fn select_buildopt<'a>(
-    opts: impl IntoIterator<Item = &'a BuildOpt>,
-    cmd_kind: CmdKind,
-) -> Result<&'a BuildOpt, Error> {
-    // Target kinds we want to look for
-    let look_for = &[TargetKind::Bin, TargetKind::Example, TargetKind::Test];
+impl<'a> CargoBuildOutput<'a> {
+    pub(crate) fn artifact(&self) -> Result<PathBuf, Error> {
+        Ok(self.select_buildopt()?.artifact())
+    }
 
-    // Find candidates with the possible target types
-    let candidates: Vec<_> = opts
-        .into_iter()
-        .filter(|opt| {
-            // When run as a test or bench we only care about the
-            // binary where the profile is set as `test`
-            match cmd_kind {
-                CmdKind::Test | CmdKind::Bench => opt.profile.test,
-                CmdKind::Run => opt
-                    .target
-                    .kind
+    /// Selects the buildopt which fits with the requirements
+    ///
+    /// If there are multiple possible candidates, this will return an error
+    fn select_buildopt(&self) -> Result<&CargoBuildOutputElement, Error> {
+        // Target kinds we want to look for
+        let look_for = &[TargetKind::Bin, TargetKind::Example, TargetKind::Test];
+
+        // Find candidates with the possible target types
+        let candidates: Vec<_> = self
+            .elements
+            .iter()
+            .filter(|opt| {
+                // When run as a test or bench we only care about the
+                // binary where the profile is set as `test`
+                match self.cmd.kind {
+                    CmdKind::Test | CmdKind::Bench => opt.profile.test,
+                    CmdKind::Run => opt
+                        .target
+                        .kind
+                        .iter()
+                        .any(|kind| look_for.iter().any(|lkind| lkind == kind)),
+                }
+            })
+            .collect();
+
+        // We expect exactly one candidate; everything else is an error
+        match candidates.as_slice() {
+            [] => Err(err_msg("No suitable build artifacts found.")),
+            [ref the_one] => Ok(the_one),
+            the_many => {
+                // Use some effort to create a pretty list of candidates.
+                let many_fmt = the_many
                     .iter()
-                    .any(|kind| look_for.iter().any(|lkind| lkind == kind)),
+                    .map(|opt| {
+                        format!(
+                            "- {} ({}){}\n",
+                            opt.package_id,
+                            opt.target
+                                .kind
+                                .iter()
+                                .map(|k| k.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            if opt.profile.test { " [test]" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+
+                Err(format_err!(
+                    concat!(
+                        "Found several artifact candidates:\n{}\nTo be more specific use `--test`, ",
+                        "`--bin`, `--lib` or `--examples` based on which binary you want to examine."
+                    ),
+                    many_fmt
+                ))
             }
-        })
-        .collect();
-
-    // We expect exactly one candidate; everything else is an error
-    match candidates.as_slice() {
-        [] => Err(err_msg("No suitable build artifacts found.")),
-        [the_one] => Ok(the_one),
-        the_many => {
-            // Use some effort to create a pretty list of candidates.
-            let many_fmt = the_many
-                .iter()
-                .map(|opt| {
-                    format!(
-                        "- {} ({}){}\n",
-                        opt.package_id,
-                        opt.target
-                            .kind
-                            .iter()
-                            .map(|k| k.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        if opt.profile.test { " [test]" } else { "" }
-                    )
-                })
-                .collect::<String>();
-
-            Err(format_err!(
-                concat!(
-                    "Found several artifact candidates:\n{}\nTo be more specific use `--test`, ",
-                    "`--bin`, `--lib` or `--examples` based on which binary you want to examine."
-                ),
-                many_fmt
-            ))
         }
     }
 }
 
-impl BuildOpt {
-    /// Best guess for the build artifact associated with this `BuildOpt`
-    pub(crate) fn artifact(&self) -> Result<PathBuf, Error> {
-        Ok(self.filenames[0].clone())
+impl CargoBuildOutputElement {
+    /// Best guess for the build artifact associated with this `CargoBuildOutputElement`
+    fn artifact(&self) -> PathBuf {
+        self.filenames[0].clone()
     }
 }
 
@@ -270,6 +281,6 @@ mod tests {
         let json = "
 {\"features\":[],\"filenames\":[\"/home/christian/repos/rust/cargo-dbg/target/debug/cargo_dbg-813f65328e31d537\"],\"fresh\":true,\"package_id\":\"cargo-dbg 0.1.0 (path+file:///home/christian/repos/rust/cargo-dbg)\",\"profile\":{\"debug_assertions\":true,\"debuginfo\":2,\"opt_level\":\"0\",\"overflow_checks\":true,\"test\":true},\"reason\":\"compiler-artifact\",\"target\":{\"crate_types\":[\"bin\"],\"edition\":\"2015\",\"kind\":[\"bin\"],\"name\":\"cargo-dbg\",\"src_path\":\"/home/christian/repos/rust/cargo-dbg/src/main.rs\"}
 }";
-        let _opts: BuildOpt = serde_json::from_str(json).unwrap();
+        let _opts: CargoBuildOutputElement = serde_json::from_str(json).unwrap();
     }
 }

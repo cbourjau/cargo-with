@@ -83,7 +83,7 @@ impl<'a> CargoCmd<'a> {
 
         if !build_out.status.success() {
             Err(format_err!(
-                "Cargo command failed. Try running the follwing command: cargo {}",
+                "Cargo command failed. Try running the following command: cargo {}",
                 self.args().collect::<Vec<_>>().join(" ")
             ))?;
         }

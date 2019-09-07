@@ -1,6 +1,6 @@
 [package]
 name = "cargo-with"
-version = "0.3.0"
+version = "0.3.2"
 edition = "2018"
 authors = [
 	"cbourjau <christianb@posteo.de>",
